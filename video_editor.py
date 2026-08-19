@@ -1,24 +1,27 @@
 """
 video_editor.py
 ================
-يقوم بمونتاج الفيديو النهائي: يدمج كل صورة مع مقطعها الصوتي المقابل،
-مع تطبيق تأثير Ken Burns (تكبير/تحريك بطيء) لإضفاء طابع سينمائي،
-ثم يدمج كل المشاهد في فيديو واحد متكامل.
-
-المخرجات:
-    - ملف فيديو نهائي: output/final_video.mp4
+يقوم بمونتاج الفيديو النهائي من مقاطع فيديو حقيقية (بدل الصور الثابتة):
+    - يقصّ/يكرّر كل مقطع ليطابق مدة صوت الراوي لنفس المشهد
+    - يطبّق مؤثرات سينمائية: تكبير بطيء، تصحيح ألوان مظلم، تظليل حواف،
+      وانتقالات تلاشي ناعمة بين المشاهد
+    - يدمج التعليق الصوتي لكل مشهد
+    - يضيف موسيقى خلفية بصوت منخفض تحت الراوي (إن وُجدت)
 """
 
 import os
 import json
 import random
+import numpy as np
 
 from moviepy.editor import (
-    ImageClip,
+    VideoFileClip,
     AudioFileClip,
     CompositeVideoClip,
+    CompositeAudioClip,
     concatenate_videoclips,
     vfx,
+    afx,
 )
 
 BASE_DIR = os.path.dirname(__file__)
@@ -32,63 +35,148 @@ VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
 FPS = 30
 
-KEN_BURNS_MAX_ZOOM = 1.15
+MAX_ZOOM = 1.12
 CROSSFADE_DURATION = 1.0
+MUSIC_VOLUME_RATIO = 0.12
 
 
-def apply_ken_burns_effect(image_clip: ImageClip, duration: float) -> ImageClip:
-    clip = image_clip.resize(height=int(VIDEO_HEIGHT * KEN_BURNS_MAX_ZOOM * 1.2))
-
-    zoom_in = random.choice([True, False])
-
-    if zoom_in:
-        start_scale, end_scale = 1.0, KEN_BURNS_MAX_ZOOM
-    else:
-        start_scale, end_scale = KEN_BURNS_MAX_ZOOM, 1.0
-
+def apply_slow_zoom(clip: VideoFileClip, duration: float) -> VideoFileClip:
     def resize_func(t):
         progress = t / duration if duration > 0 else 0
-        scale = start_scale + (end_scale - start_scale) * progress
-        return scale
+        return 1.0 + (MAX_ZOOM - 1.0) * progress
 
-    animated_clip = clip.resize(resize_func)
-    animated_clip = animated_clip.set_position(("center", "center"))
-
-    return animated_clip
+    return clip.resize(resize_func)
 
 
-def build_scene_clip(image_path: str, audio_path: str) -> CompositeVideoClip:
+def apply_dark_grading(clip: VideoFileClip) -> VideoFileClip:
+    def grade_frame(frame):
+        graded = frame.astype("float32")
+        graded[:, :, 0] *= 0.92
+        graded[:, :, 2] *= 1.05
+        graded = graded * 0.88
+        return np.clip(graded, 0, 255).astype("uint8")
+
+    return clip.fl_image(grade_frame)
+
+
+def build_vignette_mask(width: int, height: int) -> np.ndarray:
+    y, x = np.ogrid[:height, :width]
+    center_x, center_y = width / 2, height / 2
+    max_dist = np.sqrt(center_x ** 2 + center_y ** 2)
+    dist = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+    mask = 1 - 0.45 * (dist / max_dist) ** 2
+    return np.clip(mask, 0.4, 1.0)
+
+
+_VIGNETTE_CACHE = {}
+
+
+def apply_vignette(clip: VideoFileClip) -> VideoFileClip:
+    key = (clip.w, clip.h)
+    if key not in _VIGNETTE_CACHE:
+        _VIGNETTE_CACHE[key] = build_vignette_mask(clip.w, clip.h)
+    mask = _VIGNETTE_CACHE[key]
+
+    def vignette_frame(frame):
+        result = frame.astype("float32") * mask[:, :, np.newaxis]
+        return np.clip(result, 0, 255).astype("uint8")
+
+    return clip.fl_image(vignette_frame)
+
+
+def fit_clip_to_duration(clip: VideoFileClip, target_duration: float) -> VideoFileClip:
+    if clip.duration >= target_duration:
+        max_start = max(0, clip.duration - target_duration)
+        start = random.uniform(0, max_start) if max_start > 0 else 0
+        return clip.subclip(start, start + target_duration)
+    else:
+        loops_needed = int(target_duration // clip.duration) + 1
+        looped = concatenate_videoclips([clip] * loops_needed)
+        return looped.subclip(0, target_duration)
+
+
+def resize_and_crop_to_frame(clip: VideoFileClip) -> VideoFileClip:
+    target_ratio = VIDEO_WIDTH / VIDEO_HEIGHT
+    clip_ratio = clip.w / clip.h
+
+    if clip_ratio > target_ratio:
+        resized = clip.resize(height=VIDEO_HEIGHT)
+        resized = resized.crop(x_center=resized.w / 2, width=VIDEO_WIDTH)
+    else:
+        resized = clip.resize(width=VIDEO_WIDTH)
+        resized = resized.crop(y_center=resized.h / 2, height=VIDEO_HEIGHT)
+
+    return resized
+
+
+def build_scene_clip(video_path: str, audio_path: str) -> CompositeVideoClip:
     audio_clip = AudioFileClip(audio_path)
     duration = audio_clip.duration
 
-    base_image_clip = ImageClip(image_path).set_duration(duration)
-    animated_clip = apply_ken_burns_effect(base_image_clip, duration)
+    raw_clip = VideoFileClip(video_path).without_audio()
+    fitted = fit_clip_to_duration(raw_clip, duration)
+    framed = resize_and_crop_to_frame(fitted)
+
+    zoomed = apply_slow_zoom(framed, duration)
+    graded = apply_dark_grading(zoomed)
+    vignetted = apply_vignette(graded)
 
     scene = CompositeVideoClip(
-        [animated_clip.set_position("center")], size=(VIDEO_WIDTH, VIDEO_HEIGHT)
+        [vignetted.set_position("center")], size=(VIDEO_WIDTH, VIDEO_HEIGHT)
     ).set_duration(duration)
 
     scene = scene.set_audio(audio_clip)
-
     scene = scene.fx(vfx.fadein, CROSSFADE_DURATION).fx(vfx.fadeout, CROSSFADE_DURATION)
 
     return scene
 
 
-def create_final_video(scenes: list, image_paths: list, audio_paths: list) -> str:
-    if len(image_paths) != len(audio_paths):
-        raise ValueError("عدد الصور لا يساوي عدد ملفات الصوت.")
+def add_background_music(video: CompositeVideoClip, music_path: str) -> CompositeVideoClip:
+    if not music_path or not os.path.exists(music_path):
+        print("[video_editor] لا توجد موسيقى خلفية - سيُنشأ الفيديو بدونها.")
+        return video
 
-    print(f"[video_editor] بناء {len(image_paths)} مشهداً...")
+    try:
+        music = AudioFileClip(music_path)
+        target_duration = video.duration
+
+        if music.duration < target_duration:
+            music = music.fx(afx.audio_loop, duration=target_duration)
+        else:
+            music = music.subclip(0, target_duration)
+
+        music = music.fx(afx.volumex, MUSIC_VOLUME_RATIO)
+        music = music.audio_fadein(2).audio_fadeout(3)
+
+        combined_audio = CompositeAudioClip([video.audio, music])
+        video = video.set_audio(combined_audio)
+
+        print("[video_editor] تمت إضافة الموسيقى الخلفية بنجاح.")
+        return video
+
+    except Exception as e:
+        print(f"[video_editor] تعذّر دمج الموسيقى الخلفية: {e}. سيُكمل الفيديو بدونها.")
+        return video
+
+
+def create_final_video(
+    scenes: list, clip_paths: list, audio_paths: list, music_path: str = None
+) -> str:
+    if len(clip_paths) != len(audio_paths):
+        raise ValueError("عدد مقاطع الفيديو لا يساوي عدد ملفات الصوت.")
+
+    print(f"[video_editor] بناء {len(clip_paths)} مشهداً...")
 
     scene_clips = []
-    for idx, (img_path, audio_path) in enumerate(zip(image_paths, audio_paths), start=1):
-        print(f"[video_editor] معالجة المشهد {idx}/{len(image_paths)}...")
-        clip = build_scene_clip(img_path, audio_path)
+    for idx, (clip_path, audio_path) in enumerate(zip(clip_paths, audio_paths), start=1):
+        print(f"[video_editor] معالجة المشهد {idx}/{len(clip_paths)}...")
+        clip = build_scene_clip(clip_path, audio_path)
         scene_clips.append(clip)
 
     print("[video_editor] دمج كل المشاهد في فيديو نهائي...")
     final_video = concatenate_videoclips(scene_clips, method="compose")
+
+    final_video = add_background_music(final_video, music_path)
 
     final_video.write_videofile(
         FINAL_VIDEO_PATH,
@@ -112,14 +200,16 @@ if __name__ == "__main__":
     with open(script_path, "r", encoding="utf-8") as f:
         scenes_data = json.load(f)
 
-    images_dir = os.path.join(TEMP_DIR, "images")
+    clips_dir = os.path.join(TEMP_DIR, "clips")
     audio_dir = os.path.join(TEMP_DIR, "audio")
+    music_file = os.path.join(TEMP_DIR, "music", "background.mp3")
 
-    image_files = sorted(
-        [os.path.join(images_dir, f) for f in os.listdir(images_dir)]
-    )
-    audio_files = sorted(
-        [os.path.join(audio_dir, f) for f in os.listdir(audio_dir)]
-    )
+    clip_files = sorted([os.path.join(clips_dir, f) for f in os.listdir(clips_dir)])
+    audio_files = sorted([os.path.join(audio_dir, f) for f in os.listdir(audio_dir)])
 
-    create_final_video(scenes_data, image_files, audio_files)
+    create_final_video(
+        scenes_data,
+        clip_files,
+        audio_files,
+        music_path=music_file if os.path.exists(music_file) else None,
+        )
