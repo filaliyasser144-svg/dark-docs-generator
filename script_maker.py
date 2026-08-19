@@ -27,7 +27,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "ضع_مفتاح_Gemini_هنا")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ضع_مفتاح_OpenAI_هنا")
 # ---------------------------------------------------------------------------
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
 OPENAI_MODEL = "gpt-4o-mini"
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
