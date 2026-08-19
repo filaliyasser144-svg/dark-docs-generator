@@ -2,18 +2,12 @@
 main.py
 =======
 الملف الرئيسي (Orchestrator) الذي يدير خط الإنتاج الكامل بالترتيب:
-
-    1) script_maker   -> كتابة السيناريو + أوامر الصور
-    2) voice_maker     -> تحويل النصوص إلى تعليق صوتي
-    3) visuals_maker    -> توليد الصور السينمائية
-    4) video_editor     -> مونتاج الفيديو النهائي (Ken Burns + دمج صوت)
-    5) drive_uploader   -> رفع الفيديو النهائي إلى Google Drive
-    6) تنظيف الملفات المؤقتة بعد نجاح الرفع
-
-طريقة التشغيل:
-    python main.py --topic "موضوع الحلقة هنا" --scenes 8
-
-أو اتركه بدون --topic ليستخدم موضوعاً افتراضياً.
+    1) script_maker    -> كتابة السيناريو + أوامر الفيديو
+    2) voice_maker      -> تحويل النصوص إلى تعليق صوتي
+    3) visuals_maker      -> تحميل مقاطع فيديو حقيقية
+    4) music_maker         -> جلب موسيقى خلفية
+    5) video_editor         -> مونتاج الفيديو النهائي
+    6) drive_uploader       -> رفع الفيديو إلى Google Drive
 """
 
 import os
@@ -30,6 +24,7 @@ load_dotenv()
 import script_maker
 import voice_maker
 import visuals_maker
+import music_maker
 import video_editor
 import drive_uploader
 
@@ -53,7 +48,10 @@ def parse_args():
         "--topic", type=str, default=None, help="موضوع الحلقة (نص عربي)"
     )
     parser.add_argument(
-        "--scenes", type=int, default=8, help="عدد المشاهد المطلوبة في السيناريو"
+        "--scenes",
+        type=int,
+        default=20,
+        help="عدد المشاهد المطلوبة في السيناريو (20 مشهد تقريباً = 15-20 دقيقة)",
     )
     parser.add_argument(
         "--keep-temp",
@@ -78,21 +76,26 @@ def run_pipeline(topic: str, num_scenes: int, keep_temp: bool = False):
     print("=" * 70)
 
     try:
-        print("\n[main] (1/5) كتابة السيناريو...")
+        print("\n[main] (1/6) كتابة السيناريو...")
         scenes = script_maker.generate_script(topic, num_scenes=num_scenes)
 
-        print("\n[main] (2/5) توليد التعليق الصوتي...")
+        print("\n[main] (2/6) توليد التعليق الصوتي...")
         audio_paths = voice_maker.generate_all_voices(scenes)
 
-        print("\n[main] (3/5) توليد الصور السينمائية...")
-        image_paths = visuals_maker.generate_all_visuals(scenes)
+        print("\n[main] (3/6) تحميل مقاطع فيديو حقيقية...")
+        clip_paths = visuals_maker.generate_all_visuals(scenes)
 
-        print("\n[main] (4/5) مونتاج الفيديو النهائي...")
-        final_video_path = video_editor.create_final_video(
-            scenes, image_paths, audio_paths
+        print("\n[main] (4/6) جلب موسيقى خلفية...")
+        music_path = music_maker.fetch_background_music(
+            os.path.join(TEMP_DIR, "music", "background.mp3")
         )
 
-        print("\n[main] (5/5) رفع الفيديو إلى Google Drive...")
+        print("\n[main] (5/6) مونتاج الفيديو النهائي...")
+        final_video_path = video_editor.create_final_video(
+            scenes, clip_paths, audio_paths, music_path=music_path
+        )
+
+        print("\n[main] (6/6) رفع الفيديو إلى Google Drive...")
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         upload_name = f"documentary_{timestamp}.mp4"
         drive_link = drive_uploader.upload_video(
@@ -120,7 +123,5 @@ def run_pipeline(topic: str, num_scenes: int, keep_temp: bool = False):
 
 if __name__ == "__main__":
     args = parse_args()
-
     topic = args.topic or random.choice(TOPICS_POOL)
-
     run_pipeline(topic=topic, num_scenes=args.scenes, keep_temp=args.keep_temp)
