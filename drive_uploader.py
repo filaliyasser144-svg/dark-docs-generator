@@ -2,44 +2,55 @@
 drive_uploader.py
 ==================
 يرفع ملف الفيديو النهائي تلقائياً إلى مجلد محدد على Google Drive،
-باستخدام حساب خدمة (Service Account) عبر Google Drive API.
+باستخدام بيانات اعتماد OAuth الخاصة بحسابك الشخصي (وليس Service Account).
+
+السبب: حسابات الخدمة (Service Account) على حسابات Gmail العادية لا تملك
+مساحة تخزين خاصة بها، فيفشل الرفع برسالة storageQuotaExceeded حتى لو
+كان حسابك الشخصي يملك مساحة كبيرة. الحل هو الرفع "نيابة عنك" مباشرة
+عبر OAuth، فيُحتسب الملف على مساحتك الحقيقية.
 
 المتطلبات:
-    1) إنشاء مشروع على Google Cloud Console وتفعيل Google Drive API.
-    2) إنشاء Service Account وتنزيل ملف JSON الخاص بمفاتيحه.
-    3) مشاركة المجلد الهدف على Drive مع بريد الـ Service Account
-       (الموجود داخل ملف الـ JSON) بصلاحية "Editor".
-    4) وضع مسار ملف الـ JSON في المتغير SERVICE_ACCOUNT_FILE أدناه،
-       أو تمريره عبر متغير بيئة GOOGLE_SERVICE_ACCOUNT_FILE.
+    1) OAuth Client ID (نوع Desktop app) من Google Cloud Console.
+    2) Refresh Token يُولَّد مرة واحدة فقط (راجع تعليمات README لطريقة
+       توليده عبر Google Colab).
+    3) المتغيرات البيئية التالية:
+       - GOOGLE_OAUTH_CLIENT_ID
+       - GOOGLE_OAUTH_CLIENT_SECRET
+       - GOOGLE_OAUTH_REFRESH_TOKEN
+       - GOOGLE_DRIVE_FOLDER_ID
 """
 
 import os
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # ---------------------- ضع بيانات الاعتماد هنا -----------------------------
-SERVICE_ACCOUNT_FILE = os.getenv(
-    "GOOGLE_SERVICE_ACCOUNT_FILE", "ضع_مسار_ملف_service_account.json_هنا"
-)
+CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "ضع_Client_ID_هنا")
+CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "ضع_Client_Secret_هنا")
+REFRESH_TOKEN = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN", "ضع_Refresh_Token_هنا")
 
 DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "ضع_معرف_مجلد_Google_Drive_هنا")
 # ---------------------------------------------------------------------------
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
 def get_drive_service():
-    if not os.path.exists(SERVICE_ACCOUNT_FILE):
-        raise FileNotFoundError(
-            f"ملف بيانات اعتماد Google غير موجود: {SERVICE_ACCOUNT_FILE}\n"
-            "تأكد من ضبط GOOGLE_SERVICE_ACCOUNT_FILE بشكل صحيح."
-        )
-
-    credentials = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    creds = Credentials(
+        token=None,
+        refresh_token=REFRESH_TOKEN,
+        token_uri=TOKEN_URI,
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        scopes=SCOPES,
     )
-    service = build("drive", "v3", credentials=credentials)
+
+    creds.refresh(Request())
+
+    service = build("drive", "v3", credentials=creds)
     return service
 
 
