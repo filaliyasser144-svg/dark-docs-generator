@@ -1,103 +1,117 @@
 """
 visuals_maker.py
 =================
-يولّد صوراً سينمائية مظلمة لكل مشهد باستخدام Pollinations.ai،
-وهي خدمة توليد صور بالذكاء الاصطناعي **مجانية بالكامل، بدون مفتاح API
-وبدون تسجيل حساب** — تكفي طلب GET بسيط لرابط يحتوي على الوصف النصي.
-
-المخرجات:
-    - صورة واحدة لكل مشهد داخل temp/images/scene_XX.png
-    - قائمة بمسارات هذه الصور (بنفس ترتيب المشاهد)
+يجلب مقاطع فيديو حقيقية من Pexels حسب وصف كل مشهد.
 """
 
 import os
 import json
 import time
 import random
-import urllib.parse
 import requests
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
-IMAGES_DIR = os.path.join(TEMP_DIR, "images")
-os.makedirs(IMAGES_DIR, exist_ok=True)
+CLIPS_DIR = os.path.join(TEMP_DIR, "clips")
+os.makedirs(CLIPS_DIR, exist_ok=True)
 
-# =========================================================================
-#  Pollinations.ai — خدمة توليد صور مجانية بالكامل، بدون مفتاح API
-# =========================================================================
-POLLINATIONS_BASE_URL = "https://image.pollinations.ai/prompt/"
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "ضع_مفتاح_Pexels_هنا")
 
-POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "flux")
+PEXELS_SEARCH_URL = "https://api.pexels.com/videos/search"
 
-IMAGE_WIDTH = 1920
-IMAGE_HEIGHT = 1080
-
-STYLE_SUFFIX = (
-    ", cinematic lighting, dark moody atmosphere, film noir style, "
-    "high contrast shadows, mysterious crime investigation aesthetic, "
-    "photorealistic, ultra detailed, 4k"
-)
+FALLBACK_QUERIES = [
+    "dark city street night",
+    "crime investigation room",
+    "mystery fog night",
+    "police lights night",
+    "abandoned building dark",
+]
 
 
-def _build_pollinations_url(prompt: str, seed: int) -> str:
-    full_prompt = prompt.strip()
-    if "cinematic" not in full_prompt.lower():
-        full_prompt += STYLE_SUFFIX
+def _extract_search_keywords(image_prompt: str) -> str:
+    first_part = image_prompt.split(",")[0].strip()
+    words = first_part.split()
+    return " ".join(words[:6])
 
-    encoded_prompt = urllib.parse.quote(full_prompt)
 
-    url = (
-        f"{POLLINATIONS_BASE_URL}{encoded_prompt}"
-        f"?width={IMAGE_WIDTH}&height={IMAGE_HEIGHT}"
-        f"&model={POLLINATIONS_MODEL}"
-        f"&seed={seed}"
-        f"&nologo=true"
+def _search_pexels_video(query: str) -> str:
+    headers = {"Authorization": PEXELS_API_KEY}
+    params = {
+        "query": query,
+        "orientation": "landscape",
+        "size": "medium",
+        "per_page": 5,
+    }
+
+    response = requests.get(PEXELS_SEARCH_URL, headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+
+    videos = data.get("videos", [])
+    if not videos:
+        return None
+
+    chosen = random.choice(videos)
+
+    video_files = sorted(
+        chosen.get("video_files", []),
+        key=lambda f: f.get("width", 0),
+        reverse=True,
     )
-    return url
+    best_file = None
+    for f in video_files:
+        if f.get("width", 0) <= 1920:
+            best_file = f
+            break
+    if best_file is None and video_files:
+        best_file = video_files[-1]
+
+    return best_file["link"] if best_file else None
 
 
-def generate_image_for_scene(prompt: str, output_path: str, max_retries: int = 4) -> str:
+def download_clip_for_scene(image_prompt: str, output_path: str, max_retries: int = 3) -> str:
+    query = _extract_search_keywords(image_prompt)
+    candidates = [query] + FALLBACK_QUERIES
+
     last_error = None
-    for attempt in range(1, max_retries + 1):
+    for attempt, search_query in enumerate(candidates[:max_retries + 1], start=1):
         try:
-            print(f"[visuals_maker] توليد صورة... (محاولة {attempt})")
+            print(f"[visuals_maker] بحث عن مقطع فيديو: '{search_query}' (محاولة {attempt})")
+            video_url = _search_pexels_video(search_query)
 
-            seed = random.randint(1, 999_999)
-            url = _build_pollinations_url(prompt, seed)
+            if not video_url:
+                raise RuntimeError("لا توجد نتائج مطابقة.")
 
-            response = requests.get(url, timeout=120)
-            response.raise_for_status()
-
-            content_type = response.headers.get("Content-Type", "")
-            if "image" not in content_type:
-                raise RuntimeError(f"الرد ليس صورة صالحة (Content-Type: {content_type})")
+            video_response = requests.get(video_url, timeout=120, stream=True)
+            video_response.raise_for_status()
 
             with open(output_path, "wb") as f:
-                f.write(response.content)
+                for chunk in video_response.iter_content(chunk_size=1024 * 1024):
+                    f.write(chunk)
 
             return output_path
 
         except Exception as e:
             last_error = e
             print(f"[visuals_maker] فشلت المحاولة {attempt}: {e}")
-            time.sleep(3)
+            time.sleep(2)
 
-    raise RuntimeError(f"فشل توليد الصورة بعد {max_retries} محاولات: {last_error}")
+    raise RuntimeError(f"فشل تحميل مقطع الفيديو بعد عدة محاولات: {last_error}")
 
 
 def generate_all_visuals(scenes: list) -> list:
-    image_paths = []
+    clip_paths = []
 
     for idx, scene in enumerate(scenes, start=1):
         prompt = scene["image_prompt"]
-        output_path = os.path.join(IMAGES_DIR, f"scene_{idx:02d}.png")
+        output_path = os.path.join(CLIPS_DIR, f"scene_{idx:02d}.mp4")
 
-        generate_image_for_scene(prompt, output_path)
-        image_paths.append(output_path)
-        print(f"[visuals_maker] تم إنشاء: {output_path}")
+        download_clip_for_scene(prompt, output_path)
+        clip_paths.append(output_path)
+        print(f"[visuals_maker] تم تحميل: {output_path}")
 
         time.sleep(1)
 
-    return image_paths
+    return clip_paths
 
 
 if __name__ == "__main__":
@@ -111,6 +125,6 @@ if __name__ == "__main__":
         scenes_data = json.load(f)
 
     paths = generate_all_visuals(scenes_data)
-    print("تم إنشاء الصور التالية:")
+    print("تم تحميل المقاطع التالية:")
     for p in paths:
         print(" -", p)
