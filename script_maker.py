@@ -3,13 +3,6 @@ script_maker.py
 ================
 يتولى هذا الملف إنتاج سيناريو وثائقي بأسلوب غموض/جريمة (Dark Crime Mystery)
 باستخدام Gemini API (افتراضياً) مع دعم اختياري لـ OpenAI API كبديل.
-
-المخرجات:
-    قائمة (list) من القواميس (dict)، كل عنصر يمثل "مشهداً" ويحتوي على:
-        - "narration": نص التعليق الصوتي لهذا المشهد (بالعربية الفصحى الدرامية)
-        - "image_prompt": وصف إنجليزي سينمائي مظلم لتوليد صورة المشهد
-
-يتم حفظ النتيجة أيضاً في ملف JSON مؤقت (temp/script.json) ليستخدمه بقية النظام.
 """
 
 import os
@@ -19,10 +12,8 @@ import time
 
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
 
-# ---------------------- ضع مفاتيح الـ API هنا -----------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "ضع_مفتاح_Gemini_هنا")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ضع_مفتاح_OpenAI_هنا")
-# ---------------------------------------------------------------------------
 
 GEMINI_MODEL = "gemini-3.6-flash"
 OPENAI_MODEL = "gpt-4o-mini"
@@ -45,12 +36,10 @@ def build_prompt(topic: str, num_scenes: int = 8) -> str:
 - استخدم أسلوب سرد التحقيق البوليسي: غموض، توتر، تفاصيل دقيقة، تشويق تصاعدي.
 - نبرة الكتابة: وقورة، عميقة، هادئة، تبعث على الترقب.
 - قسّم السيناريو إلى {num_scenes} مشاهد متتالية، كل مشهد يمثل حلقة في القصة.
-- هذا فيديو وثائقي طويل (يستهدف 15-20 دقيقة)، لذا يجب أن يكون كل مشهد
-  غنياً بالتفاصيل ومطوّلاً نسبياً، وليس مجرد جملة قصيرة عابرة.
 
 لكل مشهد يجب أن توفر:
-1) "narration": نص التعليق الصوتي بالعربية الفصحى (8-12 جملة طويلة
-   ومترابطة، تروي تفاصيل غنية ودقيقة عن هذا الجزء من القصة).
+1) "narration": نص التعليق الصوتي بالعربية الفصحى (5-7 جمل مترابطة).
+   اكتب النص كسطر واحد متصل بدون فواصل أسطر داخل النص نفسه.
 2) "image_prompt": وصف بصري بالإنجليزية لمشهد سينمائي مظلم يلائم هذا الجزء
    من القصة، يتضمن: cinematic lighting, dark and moody atmosphere,
    dramatic camera angle, investigation room / crime scene / night street
@@ -77,7 +66,7 @@ def generate_with_gemini(prompt: str) -> str:
         prompt,
         generation_config={
             "temperature": 0.9,
-            "max_output_tokens": 8192,
+            "max_output_tokens": 32768,
         },
     )
     return response.text
@@ -109,7 +98,14 @@ def extract_json(raw_text: str):
     if match:
         cleaned = match.group(0)
 
-    return json.loads(cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        last_complete = cleaned.rfind("},")
+        if last_complete != -1:
+            repaired = cleaned[: last_complete + 1] + "]"
+            return json.loads(repaired)
+        raise
 
 
 def generate_script(topic: str, num_scenes: int = 8, max_retries: int = 3):
