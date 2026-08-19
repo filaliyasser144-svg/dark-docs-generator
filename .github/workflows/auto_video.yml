@@ -11,7 +11,9 @@
 #
 #   - GEMINI_API_KEY                (مجاني - Free Tier من Google AI Studio)
 #   - GOOGLE_DRIVE_FOLDER_ID
-#   - GOOGLE_SERVICE_ACCOUNT_JSON    (محتوى ملف JSON كاملاً كسلسلة نصية)
+#   - GOOGLE_OAUTH_CLIENT_ID         (من OAuth Client - نوع Desktop app)
+#   - GOOGLE_OAUTH_CLIENT_SECRET
+#   - GOOGLE_OAUTH_REFRESH_TOKEN     (يُولَّد مرة واحدة فقط - راجع README)
 # ==========================================================================
 
 name: Auto Dark Documentary Video Generator
@@ -55,23 +57,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Write Google Service Account credentials file
-        run: |
-          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service_account.json
-
       - name: Run video generation pipeline
         env:
           AI_PROVIDER: "gemini"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          GOOGLE_SERVICE_ACCOUNT_FILE: "service_account.json"
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
         run: |
           if [ -n "${{ github.event.inputs.topic }}" ]; then
             python main.py --topic "${{ github.event.inputs.topic }}" --scenes "${{ github.event.inputs.scenes }}"
           else
             python main.py --scenes "${{ github.event.inputs.scenes || 8 }}"
           fi
-
-      - name: Clean up credentials file
-        if: always()
-        run: rm -f service_account.json
