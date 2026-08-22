@@ -1,7 +1,7 @@
 """
 video_editor.py
 ================
-يقوم بمونتاج الفيديو النهائي من مقاطع فيديو حقيقية (بدل الصور الثابتة):
+يقوم بمونتاج الفيديو النهائي من مقاطع فيديو حقيقية:
     - يقصّ/يكرّر كل مقطع ليطابق مدة صوت الراوي لنفس المشهد
     - يطبّق مؤثرات سينمائية: تكبير بطيء، تصحيح ألوان مظلم، تظليل حواف،
       وانتقالات تلاشي ناعمة بين المشاهد
@@ -72,12 +72,13 @@ _VIGNETTE_CACHE = {}
 
 
 def apply_vignette(clip: VideoFileClip) -> VideoFileClip:
-    key = (clip.w, clip.h)
-    if key not in _VIGNETTE_CACHE:
-        _VIGNETTE_CACHE[key] = build_vignette_mask(clip.w, clip.h)
-    mask = _VIGNETTE_CACHE[key]
-
     def vignette_frame(frame):
+        h, w = frame.shape[0], frame.shape[1]
+        key = (w, h)
+        if key not in _VIGNETTE_CACHE:
+            _VIGNETTE_CACHE[key] = build_vignette_mask(w, h)
+        mask = _VIGNETTE_CACHE[key]
+
         result = frame.astype("float32") * mask[:, :, np.newaxis]
         return np.clip(result, 0, 255).astype("uint8")
 
@@ -212,4 +213,4 @@ if __name__ == "__main__":
         clip_files,
         audio_files,
         music_path=music_file if os.path.exists(music_file) else None,
-        )
+    )
