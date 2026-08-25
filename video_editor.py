@@ -31,9 +31,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 FINAL_VIDEO_PATH = os.path.join(OUTPUT_DIR, "final_video.mp4")
 
-VIDEO_WIDTH = 1920
-VIDEO_HEIGHT = 1080
-FPS = 30
+VIDEO_WIDTH = 1280
+VIDEO_HEIGHT = 720
+FPS = 24
 
 MAX_ZOOM = 1.12
 CROSSFADE_DURATION = 1.0
@@ -185,7 +185,7 @@ def create_final_video(
         codec="libx264",
         audio_codec="aac",
         threads=4,
-        preset="medium",
+        preset="veryfast",
     )
 
     for clip in scene_clips:
@@ -213,4 +213,4 @@ if __name__ == "__main__":
         clip_files,
         audio_files,
         music_path=music_file if os.path.exists(music_file) else None,
-    )
+)
