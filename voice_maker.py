@@ -1,17 +1,10 @@
 """
 voice_maker.py
 ==============
-يحوّل نصوص السيناريو إلى تعليق صوتي احترافي.
+يحوّل نصوص التلخيص إلى تعليق صوتي احترافي.
 
-الأولوية: **Gemini TTS** (يستخدم نفس مفتاح Gemini الموجود عندك أصلاً،
-بدون أي إعداد إضافي) — جودته طبيعية جداً وقريبة من صوت بشري حقيقي.
-
-في حال فشل Gemini TTS لأي سبب، ينتقل النظام تلقائياً لبديل احتياطي:
-Edge-TTS (مجاني، بدون مفتاح).
-
-المخرجات:
-    - ملف صوتي منفصل لكل مشهد داخل temp/audio/scene_XX.mp3
-    - قائمة بمسارات هذه الملفات (بنفس ترتيب المشاهد)
+الأولوية: Gemini TTS (يستخدم نفس مفتاح Gemini الموجود عندك أصلاً).
+في حال فشل، ينتقل تلقائياً لبديل احتياطي: Edge-TTS (مجاني، بدون مفتاح).
 """
 
 import os
@@ -37,8 +30,9 @@ GEMINI_TTS_URL = (
 )
 
 STYLE_INSTRUCTION = (
-    "اقرأ النص التالي بصوت راوي وثائقي وقور، هادئ، عميق، وبطيء الإيقاع، "
-    "يبعث على الغموض والترقب، بأسلوب أفلام الجرائم الوثائقية:\n\n"
+    "اقرأ النص التالي بصوت راوي محترف لقناة تلخيص كتب ناجحة: صوت حيوي، "
+    "واثق، متفاعل، بإيقاع متنوع (يتباطأ عند الأفكار المهمة ويتسارع قليلاً "
+    "عند سرد الأمثلة)، بأسلوب يشد الانتباه ولا يشعر المستمع بالملل:\n\n"
 )
 
 
@@ -85,8 +79,8 @@ def synthesize_with_gemini(text: str, output_path: str) -> bool:
 
 
 EDGE_VOICE_NAME = os.getenv("EDGE_TTS_VOICE", "ar-SA-HamedNeural")
-EDGE_SPEECH_RATE = os.getenv("EDGE_TTS_RATE", "-8%")
-EDGE_SPEECH_PITCH = os.getenv("EDGE_TTS_PITCH", "-5Hz")
+EDGE_SPEECH_RATE = os.getenv("EDGE_TTS_RATE", "+0%")
+EDGE_SPEECH_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz")
 
 
 async def _synthesize_edge_async(text: str, output_path: str):
@@ -147,9 +141,9 @@ if __name__ == "__main__":
         )
 
     with open(script_path, "r", encoding="utf-8") as f:
-        scenes_data = json.load(f)
+        script_data = json.load(f)
 
-    paths = generate_all_voices(scenes_data)
+    paths = generate_all_voices(script_data["scenes"])
     print("تم إنشاء الملفات الصوتية التالية:")
     for p in paths:
         print(" -", p)
