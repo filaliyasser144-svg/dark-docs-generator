@@ -1,8 +1,8 @@
 """
 script_maker.py
 ================
-يتولى هذا الملف إنتاج سيناريو وثائقي بأسلوب غموض/جريمة (Dark Crime Mystery)
-باستخدام Gemini API (افتراضياً) مع دعم اختياري لـ OpenAI API كبديل.
+ينتج تلخيصاً شاملاً وعميقاً لكتاب معيّن باللغة العربية، بأسلوب سردي قوي
+وجذاب، مقسّماً إلى مشاهد متتالية تغطي كل الكتاب.
 """
 
 import os
@@ -22,36 +22,50 @@ TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
 SCRIPT_JSON_PATH = os.path.join(TEMP_DIR, "script.json")
 
+VALID_MOODS = {"hopeful", "dark", "mysterious", "sad", "motivational", "neutral"}
 
-def build_prompt(topic: str, num_scenes: int = 8) -> str:
+
+def build_prompt(book_title: str, num_scenes: int = 20) -> str:
     prompt = f"""
-أنت كاتب سيناريو محترف متخصص في صناعة الأفلام الوثائقية الغامضة والجنائية
-(True Crime / Mystery Documentary) باللغة العربية الفصحى مع تبسيط درامي جذاب.
+أنت خبير في تلخيص الكتب وصناعة محتوى تعليمي جذاب لقناة "تلخيص كتب" ناجحة
+على يوتيوب. أسلوبك قصصي قوي وحيوي، ليس جافاً أو أكاديمياً — تشرح الأفكار
+بأمثلة وقصص وتشويق، بحيث لا يشعر المستمع بالملل أبداً رغم طول المحتوى.
 
-المطلوب: اكتب سيناريو وثائقي عن الموضوع التالي:
-"{topic}"
+المطلوب: لخّص كتاب "{book_title}" تلخيصاً شاملاً وعميقاً باللغة العربية
+الفصحى المبسّطة، بحيث يخرج المستمع فاهماً كل الأفكار الأساسية بالكتاب
+وكأنه قرأه فعلاً.
 
-شروط الأسلوب:
-- ابدأ بمقدمة خطافة صادمة (Dramatic Hook) تشد المستمع من الثانية الأولى.
-- استخدم أسلوب سرد التحقيق البوليسي: غموض، توتر، تفاصيل دقيقة، تشويق تصاعدي.
-- نبرة الكتابة: وقورة، عميقة، هادئة، تبعث على الترقب.
-- قسّم السيناريو إلى {num_scenes} مشاهد متتالية، كل مشهد يمثل حلقة في القصة.
+قواعد صارمة لتجنّب الملل:
+- ابدأ بمقدمة خطافة قوية: لماذا هذا الكتاب مهم؟ ما المشكلة التي يحلّها؟
+- بعدها نبذة قصيرة وشيّقة عن الكاتب (من هو، ولماذا يستحق أن نسمع له).
+- غطِّ كل فكرة رئيسية أو فصل بمشهد منفصل، واشرحها بمثال واقعي أو قصة
+  قصيرة تجعلها ملموسة، لا مجرد سرد نظري.
+- نوّع أسلوب الانتقال بين المشاهد: أحياناً بسؤال يشد الانتباه، أحياناً
+  بمقارنة، أحياناً بقصة قصيرة، لتفادي الرتابة.
+- اختم بخاتمة تطبيقية: ما الذي يجب أن يفعله المستمع الآن بعد سماع هذا؟
+  لخّص أهم 3-5 دروس عملية قابلة للتطبيق فوراً.
+- هذا فيديو طويل يستهدف نحو 30 دقيقة، لذا يجب تغطية الكتاب بعمق كافٍ
+  عبر {num_scenes} مشهداً، كل مشهد فيه فقرة متوسطة الطول (5-8 جمل).
+- اكتب كل نص "narration" كسطر واحد متصل بدون فواصل أسطر داخله.
 
-لكل مشهد يجب أن توفر:
-1) "narration": نص التعليق الصوتي بالعربية الفصحى (5-7 جمل مترابطة).
-   اكتب النص كسطر واحد متصل بدون فواصل أسطر داخل النص نفسه.
-2) "image_prompt": وصف بصري بالإنجليزية لمشهد سينمائي مظلم يلائم هذا الجزء
-   من القصة، يتضمن: cinematic lighting, dark and moody atmosphere,
-   dramatic camera angle, investigation room / crime scene / night street
-   / screens (حسب سياق المشهد), photorealistic, high detail, 4k.
+بالإضافة للمشاهد، حدّد:
+- "book_title": اسم الكتاب كما تعرفه (بالعربية أو مترجم إن كان معروفاً).
+- "author": اسم مؤلف الكتاب.
+- "mood": كلمة إنجليزية واحدة فقط تصف الجو العام لأفكار الكتاب، تُختار
+  من هذه القائمة فقط: hopeful, dark, mysterious, sad, motivational, neutral
 
 أخرج النتيجة **فقط** بصيغة JSON صالحة (بدون أي نص إضافي قبلها أو بعدها)
-على الشكل التالي:
+على الشكل التالي بالضبط:
 
-[
-  {{"narration": "...", "image_prompt": "..."}},
-  {{"narration": "...", "image_prompt": "..."}}
-]
+{{
+  "book_title": "...",
+  "author": "...",
+  "mood": "...",
+  "scenes": [
+    {{"narration": "..."}},
+    {{"narration": "..."}}
+  ]
+}}
 """
     return prompt.strip()
 
@@ -65,7 +79,7 @@ def generate_with_gemini(prompt: str) -> str:
     response = model.generate_content(
         prompt,
         generation_config={
-            "temperature": 0.9,
+            "temperature": 0.85,
             "max_output_tokens": 32768,
         },
     )
@@ -80,36 +94,36 @@ def generate_with_openai(prompt: str) -> str:
     response = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
-            {"role": "system", "content": "أنت كاتب سيناريوهات وثائقية جنائية محترف."},
+            {"role": "system", "content": "أنت خبير تلخيص كتب ومحتوى تعليمي جذاب."},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.9,
+        temperature=0.85,
         max_tokens=4096,
     )
     return response.choices[0].message.content
 
 
-def extract_json(raw_text: str):
+def extract_json(raw_text: str) -> dict:
     cleaned = raw_text.strip()
     cleaned = re.sub(r"^```json\s*|\s*```$", "", cleaned, flags=re.MULTILINE)
     cleaned = cleaned.strip("`\n ")
 
-    match = re.search(r"\[.*\]", cleaned, flags=re.DOTALL)
+    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     if match:
         cleaned = match.group(0)
 
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        last_complete = cleaned.rfind("},")
+        last_complete = cleaned.rfind('"},')
         if last_complete != -1:
-            repaired = cleaned[: last_complete + 1] + "]"
+            repaired = cleaned[: last_complete + 2] + "]}"
             return json.loads(repaired)
         raise
 
 
-def generate_script(topic: str, num_scenes: int = 8, max_retries: int = 3):
-    prompt = build_prompt(topic, num_scenes)
+def generate_script(book_title: str, num_scenes: int = 20, max_retries: int = 3) -> dict:
+    prompt = build_prompt(book_title, num_scenes)
 
     last_error = None
     for attempt in range(1, max_retries + 1):
@@ -123,30 +137,39 @@ def generate_script(topic: str, num_scenes: int = 8, max_retries: int = 3):
             else:
                 raise ValueError(f"مزود غير مدعوم: {AI_PROVIDER}")
 
-            scenes = extract_json(raw_text)
+            result = extract_json(raw_text)
 
+            scenes = result.get("scenes")
             if not isinstance(scenes, list) or len(scenes) == 0:
                 raise ValueError("الرد لا يحتوي على قائمة مشاهد صالحة.")
 
             for scene in scenes:
-                if "narration" not in scene or "image_prompt" not in scene:
-                    raise ValueError("أحد المشاهد يفتقد لحقل narration أو image_prompt.")
+                if "narration" not in scene:
+                    raise ValueError("أحد المشاهد يفتقد لحقل narration.")
+
+            if result.get("mood") not in VALID_MOODS:
+                result["mood"] = "neutral"
+
+            result.setdefault("book_title", book_title)
+            result.setdefault("author", "غير معروف")
 
             with open(SCRIPT_JSON_PATH, "w", encoding="utf-8") as f:
-                json.dump(scenes, f, ensure_ascii=False, indent=2)
+                json.dump(result, f, ensure_ascii=False, indent=2)
 
-            print(f"[script_maker] تم إنتاج {len(scenes)} مشهداً بنجاح.")
-            return scenes
+            print(
+                f"[script_maker] تم إنتاج تلخيص '{result['book_title']}' "
+                f"({len(scenes)} مشهداً، مزاج: {result['mood']})."
+            )
+            return result
 
         except Exception as e:
             last_error = e
             print(f"[script_maker] فشلت المحاولة {attempt}: {e}")
             time.sleep(2)
 
-    raise RuntimeError(f"فشل إنتاج السيناريو بعد {max_retries} محاولات: {last_error}")
+    raise RuntimeError(f"فشل إنتاج التلخيص بعد {max_retries} محاولات: {last_error}")
 
 
 if __name__ == "__main__":
-    test_topic = "اختفاء غامض لطالبة جامعية في مدينة أوروبية صغيرة"
-    result = generate_script(test_topic, num_scenes=5)
+    result = generate_script("Atomic Habits", num_scenes=6)
     print(json.dumps(result, ensure_ascii=False, indent=2))
