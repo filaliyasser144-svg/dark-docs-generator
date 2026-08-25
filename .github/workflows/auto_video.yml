@@ -1,17 +1,13 @@
-name: Auto Dark Documentary Video Generator
+name: Auto Book Summary Video Generator
 
 on:
-  schedule:
-    - cron: "0 8 * * 1"
-
   workflow_dispatch:
     inputs:
-      topic:
-        description: "موضوع الحلقة (اختياري - اتركه فارغاً لاختيار موضوع عشوائي)"
-        required: false
-        default: ""
+      book:
+        description: "اسم الكتاب المراد تلخيصه"
+        required: true
       scenes:
-        description: "عدد المشاهد (20 تقريباً = فيديو 15-20 دقيقة)"
+        description: "عدد المشاهد (20 تقريباً = فيديو 25-30 دقيقة)"
         required: false
         default: "20"
 
@@ -48,9 +44,6 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
         run: |
-          if [ -n "${{ github.event.inputs.topic }}" ]; then
-            python main.py --topic "${{ github.event.inputs.topic }}" --scenes "${{ github.event.inputs.scenes }}"
-          else
-            python main.py --scenes "${{ github.event.inputs.scenes || 20 }}"
-          fi
+          python main.py --book "${{ github.event.inputs.book }}" --scenes "${{ github.event.inputs.scenes || 20 }}"
