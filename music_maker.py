@@ -1,8 +1,8 @@
 """
 music_maker.py
 ===============
-يجلب موسيقى خلفية مجانية من Jamendo. إن لم يتوفر مفتاح، يُكمل الفيديو
-بدون موسيقى تلقائياً بدون أي خطأ.
+يجلب مقطع موسيقى خلفية مجاني يناسب مزاج الكتاب، من مكتبة Jamendo
+(مجانية بالكامل). لو ما فيه مفتاح، يُكمل الفيديو بدون موسيقى تلقائياً.
 """
 
 import os
@@ -17,19 +17,28 @@ JAMENDO_CLIENT_ID = os.getenv("JAMENDO_CLIENT_ID", "")
 
 JAMENDO_SEARCH_URL = "https://api.jamendo.com/v3.0/tracks/"
 
-MOOD_TAGS = ["dark", "mystery", "cinematic", "suspense", "ambient"]
+MOOD_MUSIC_TAGS = {
+    "hopeful": ["uplifting", "inspiring", "hopeful", "warm"],
+    "dark": ["dark", "dramatic", "tense"],
+    "mysterious": ["mysterious", "ambient", "suspense"],
+    "sad": ["sad", "melancholic", "emotional", "piano"],
+    "motivational": ["epic", "motivational", "inspiring", "energetic"],
+    "neutral": ["ambient", "calm", "cinematic"],
+}
 
 
-def fetch_background_music(output_path: str, max_retries: int = 3) -> str:
+def fetch_background_music(output_path: str, mood: str = "neutral", max_retries: int = 3) -> str:
     if not JAMENDO_CLIENT_ID:
         print("[music_maker] لا يوجد مفتاح Jamendo - سيُنشأ الفيديو بدون موسيقى.")
         return None
 
+    tags = MOOD_MUSIC_TAGS.get(mood, MOOD_MUSIC_TAGS["neutral"])
+
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
-            tag = random.choice(MOOD_TAGS)
-            print(f"[music_maker] بحث عن موسيقى بمزاج '{tag}' (محاولة {attempt})")
+            tag = random.choice(tags)
+            print(f"[music_maker] بحث عن موسيقى بمزاج '{mood}' (كلمة: '{tag}', محاولة {attempt})")
 
             params = {
                 "client_id": JAMENDO_CLIENT_ID,
@@ -72,5 +81,5 @@ def fetch_background_music(output_path: str, max_retries: int = 3) -> str:
 
 if __name__ == "__main__":
     output_path = os.path.join(MUSIC_DIR, "background.mp3")
-    result = fetch_background_music(output_path)
+    result = fetch_background_music(output_path, mood="motivational")
     print("النتيجة:", result)
