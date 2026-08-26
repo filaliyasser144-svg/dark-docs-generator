@@ -49,7 +49,10 @@ def build_prompt(book_title: str, num_scenes: int = 20) -> str:
 - اكتب كل نص "narration" كسطر واحد متصل بدون فواصل أسطر داخله.
 
 بالإضافة للمشاهد، حدّد:
-- "book_title": اسم الكتاب كما تعرفه (بالعربية أو مترجم إن كان معروفاً).
+- "book_title": اسم الكتاب بالعربية (مترجم أو معروف بالعربية إن وجد).
+- "english_title": الاسم الأصلي للكتاب بالإنجليزية أو لغته الأصلية بأحرف
+  لاتينية (يُستخدم للبحث عن صورة الغلاف، لذا يجب أن يكون دقيقاً ومطابقاً
+  للعنوان الرسمي المعروف عالمياً).
 - "author": اسم مؤلف الكتاب.
 - "mood": كلمة إنجليزية واحدة فقط تصف الجو العام لأفكار الكتاب، تُختار
   من هذه القائمة فقط: hopeful, dark, mysterious, sad, motivational, neutral
@@ -59,6 +62,7 @@ def build_prompt(book_title: str, num_scenes: int = 20) -> str:
 
 {{
   "book_title": "...",
+  "english_title": "...",
   "author": "...",
   "mood": "...",
   "scenes": [
@@ -151,6 +155,7 @@ def generate_script(book_title: str, num_scenes: int = 20, max_retries: int = 3)
                 result["mood"] = "neutral"
 
             result.setdefault("book_title", book_title)
+            result.setdefault("english_title", book_title)
             result.setdefault("author", "غير معروف")
 
             with open(SCRIPT_JSON_PATH, "w", encoding="utf-8") as f:
