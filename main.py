@@ -71,16 +71,15 @@ def run_pipeline(book_title: str, num_scenes: int, keep_temp: bool = False):
         author = script_data["author"]
         mood = script_data["mood"]
         resolved_title = script_data["book_title"]
+        english_title = script_data.get("english_title", resolved_title)
 
         print("\n[main] (2/6) توليد التعليق الصوتي...")
         audio_paths = voice_maker.generate_all_voices(scenes)
 
         print("\n[main] (3/6) جلب غلاف الكتاب وصورة الخلفية...")
-        assets = book_visuals.fetch_all_book_assets(resolved_title, author, mood)
-        if not assets["cover"] or not assets["background"]:
-            raise RuntimeError(
-                "تعذّر جلب غلاف الكتاب أو صورة الخلفية. تحقق من مفتاح PEXELS_API_KEY."
-            )
+        assets = book_visuals.fetch_all_book_assets(
+            resolved_title, author, mood, english_title=english_title
+        )
 
         print("\n[main] (4/6) جلب موسيقى خلفية...")
         music_path = music_maker.fetch_background_music(
