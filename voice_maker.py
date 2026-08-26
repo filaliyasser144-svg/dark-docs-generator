@@ -3,8 +3,7 @@ voice_maker.py
 ==============
 يحوّل نصوص التلخيص إلى تعليق صوتي احترافي.
 
-الأولوية: Gemini TTS (يستخدم نفس مفتاح Gemini الموجود عندك أصلاً).
-في حال فشل، ينتقل تلقائياً لبديل احتياطي: Edge-TTS (مجاني، بدون مفتاح).
+الأولوية: Gemini TTS. عند الفشل، ينتقل تلقائياً لبديل احتياطي: Edge-TTS.
 """
 
 import os
@@ -129,6 +128,10 @@ def generate_all_voices(scenes: list) -> list:
 
         synthesize_scene(narration, output_path)
         audio_paths.append(output_path)
+
+        # تهدئة بسيطة بين الطلبات لتقليل احتمال تجاوز حصة Gemini TTS
+        # المجانية المحدودة
+        time.sleep(3)
 
     return audio_paths
 
