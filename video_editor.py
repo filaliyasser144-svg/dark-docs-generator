@@ -1,16 +1,18 @@
 """
 video_editor.py
 ================
-يبني فيديو تلخيص الكتاب: خلفية ثابتة + غلاف نابض حسب الصوت + موسيقى.
+يبني فيديو تلخيص الكتاب: خلفية ثابتة + غلاف نابض + مؤشر صوت متحرك
+(Equalizer) + موسيقى.
 """
 
 import os
 import json
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from moviepy.editor import (
     ImageClip,
+    VideoClip,
     AudioFileClip,
     CompositeVideoClip,
     CompositeAudioClip,
@@ -111,6 +113,40 @@ def make_pulsing_cover(cover_path: str, envelope: np.ndarray, duration: float, s
     return pulsing_cover
 
 
+EQUALIZER_WIDTH = 220
+EQUALIZER_HEIGHT = 70
+EQUALIZER_BARS = 6
+
+
+def make_equalizer_clip(envelope: np.ndarray, duration: float, sample_rate: int = 15):
+    def make_frame(t):
+        idx = min(int(t * sample_rate), len(envelope) - 1)
+        level = envelope[idx]
+
+        img = Image.new("RGB", (EQUALIZER_WIDTH, EQUALIZER_HEIGHT), (15, 15, 20))
+        draw = ImageDraw.Draw(img)
+
+        gap = 8
+        bar_width = (EQUALIZER_WIDTH - gap * (EQUALIZER_BARS + 1)) / EQUALIZER_BARS
+
+        for i in range(EQUALIZER_BARS):
+            phase_offset = i * 0.9
+            variation = 0.5 + 0.5 * abs(np.sin(t * 5 + phase_offset))
+            bar_level = max(0.08, level * variation)
+            bar_height = int(EQUALIZER_HEIGHT * bar_level)
+
+            x0 = gap + i * (bar_width + gap)
+            y1 = EQUALIZER_HEIGHT - 4
+            y0 = y1 - bar_height
+            x1 = x0 + bar_width
+
+            draw.rectangle([x0, y0, x1, y1], fill=(255, 255, 255))
+
+        return np.array(img)
+
+    return VideoClip(make_frame, duration=duration)
+
+
 def add_background_music(narration_audio: AudioFileClip, music_path: str) -> AudioFileClip:
     if not music_path or not os.path.exists(music_path):
         print("[video_editor] لا توجد موسيقى خلفية - سيُنشأ الفيديو بدونها.")
@@ -157,9 +193,15 @@ def create_final_video(
     envelope = compute_audio_envelope(narration_audio, sample_rate=FPS)
     cover_clip = make_pulsing_cover(cover_path, envelope, total_duration, sample_rate=FPS)
 
-    print("[video_editor] دمج الخلفية مع الغلاف...")
+    print("[video_editor] إضافة مؤشر الصوت المتحرك (Equalizer)...")
+    equalizer_clip = make_equalizer_clip(envelope, total_duration, sample_rate=FPS)
+    equalizer_x = VIDEO_WIDTH - COVER_RIGHT_MARGIN - COVER_BASE_WIDTH
+    equalizer_y = VIDEO_HEIGHT - EQUALIZER_HEIGHT - 30
+    equalizer_clip = equalizer_clip.set_position((equalizer_x, equalizer_y))
+
+    print("[video_editor] دمج الخلفية مع الغلاف ومؤشر الصوت...")
     final_visual = CompositeVideoClip(
-        [background_clip, cover_clip], size=(VIDEO_WIDTH, VIDEO_HEIGHT)
+        [background_clip, cover_clip, equalizer_clip], size=(VIDEO_WIDTH, VIDEO_HEIGHT)
     ).set_duration(total_duration)
 
     print("[video_editor] دمج الموسيقى الخلفية مع الراوي...")
