@@ -4,9 +4,6 @@ book_visuals.py
 يجلب صورتين لكل فيديو تلخيص كتاب:
     1) غلاف الكتاب — عبر Open Library ثم Google Books (مجاني، بدون مفتاح)
     2) صورة خلفية ثابتة تناسب مزاج الكتاب — عبر Pexels Photos API
-
-لو فشلت كل المصادر، ينشئ النظام صورة بديلة تلقائياً محلياً حتى لا
-تتوقف عملية الإنتاج بالكامل أبداً.
 """
 
 import os
@@ -192,9 +189,13 @@ def fetch_all_book_assets(title: str, author: str, mood: str, english_title: str
 
     search_title = english_title or title
 
-    cover = fetch_book_cover(search_title, author, cover_path)
+    # نبحث أولاً بالاسم الإنجليزي وحده (بدون اسم الكاتب) لتفادي كسر
+    # المطابقة عند خلط لغتين مختلفتين بنفس نص البحث
+    cover = fetch_book_cover(search_title, "", cover_path)
     if not cover:
-        cover = fetch_google_books_cover(search_title, author, cover_path)
+        cover = fetch_book_cover(search_title, author, cover_path)
+    if not cover:
+        cover = fetch_google_books_cover(search_title, "", cover_path)
     if not cover:
         cover = create_placeholder_cover(title, mood, cover_path)
 
