@@ -2,13 +2,18 @@
 book_visuals.py
 ================
 يجلب صورتين لكل فيديو تلخيص كتاب:
-    1) غلاف الكتاب — عبر Open Library (مجاني بالكامل، بدون أي مفتاح API)
+    1) غلاف الكتاب — عبر Open Library ثم Google Books (مجاني، بدون مفتاح)
     2) صورة خلفية ثابتة تناسب مزاج الكتاب — عبر Pexels Photos API
+
+لو فشلت كل المصادر، ينشئ النظام صورة بديلة تلقائياً محلياً حتى لا
+تتوقف عملية الإنتاج بالكامل أبداً.
 """
 
 import os
+import time
 import urllib.parse
 import requests
+from PIL import Image, ImageDraw, ImageFont
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 ASSETS_DIR = os.path.join(TEMP_DIR, "assets")
@@ -25,20 +30,29 @@ MOOD_BACKGROUND_QUERIES = {
     "neutral": "atmospheric landscape painting soft light",
 }
 
+MOOD_COLORS = {
+    "hopeful": (255, 200, 120),
+    "dark": (25, 25, 35),
+    "mysterious": (35, 40, 60),
+    "sad": (60, 70, 90),
+    "motivational": (200, 90, 40),
+    "neutral": (70, 70, 80),
+}
+
 
 def fetch_book_cover(title: str, author: str, output_path: str) -> str:
     try:
         query = f"{title} {author}".strip()
-        search_url = "https://openlibrary.org/search.json"
-        params = {"q": query, "limit": 3}
-
-        response = requests.get(search_url, params=params, timeout=20)
+        response = requests.get(
+            "https://openlibrary.org/search.json",
+            params={"q": query, "limit": 3},
+            timeout=20,
+        )
         response.raise_for_status()
         data = response.json()
 
-        docs = data.get("docs", [])
         cover_id = None
-        for doc in docs:
+        for doc in data.get("docs", []):
             if doc.get("cover_i"):
                 cover_id = doc["cover_i"]
                 break
@@ -54,45 +68,82 @@ def fetch_book_cover(title: str, author: str, output_path: str) -> str:
         with open(output_path, "wb") as f:
             f.write(img_response.content)
 
-        print(f"[book_visuals] تم تحميل غلاف الكتاب: {output_path}")
+        print(f"[book_visuals] تم تحميل غلاف الكتاب (Open Library): {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"[book_visuals] فشل جلب الغلاف: {e}")
+        print(f"[book_visuals] فشل جلب الغلاف من Open Library: {e}")
         return None
 
 
-def fetch_google_books_cover(title: str, author: str, output_path: str) -> str:
+def fetch_google_books_cover(title: str, author: str, output_path: str, max_retries: int = 2) -> str:
+    for attempt in range(1, max_retries + 1):
+        try:
+            query = urllib.parse.quote(f"{title} {author}")
+            url = f"https://www.googleapis.com/books/v1/volumes?q={query}"
+
+            response = requests.get(url, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+
+            items = data.get("items", [])
+            if not items:
+                return None
+
+            image_links = items[0].get("volumeInfo", {}).get("imageLinks", {})
+            cover_url = image_links.get("thumbnail") or image_links.get("smallThumbnail")
+
+            if not cover_url:
+                return None
+
+            img_response = requests.get(cover_url, timeout=30)
+            img_response.raise_for_status()
+
+            with open(output_path, "wb") as f:
+                f.write(img_response.content)
+
+            print(f"[book_visuals] تم تحميل غلاف الكتاب (Google Books): {output_path}")
+            return output_path
+
+        except Exception as e:
+            print(f"[book_visuals] فشلت محاولة Google Books {attempt}: {e}")
+            time.sleep(3)
+
+    return None
+
+
+def create_placeholder_cover(title: str, mood: str, output_path: str) -> str:
+    color = MOOD_COLORS.get(mood, MOOD_COLORS["neutral"])
+    img = Image.new("RGB", (400, 600), color=color)
+    draw = ImageDraw.Draw(img)
+
     try:
-        query = urllib.parse.quote(f"{title} {author}")
-        url = f"https://www.googleapis.com/books/v1/volumes?q={query}"
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28
+        )
+    except Exception:
+        font = ImageFont.load_default()
 
-        response = requests.get(url, timeout=20)
-        response.raise_for_status()
-        data = response.json()
+    words = title.split()
+    lines, current = [], ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if len(test) > 18:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
 
-        items = data.get("items", [])
-        if not items:
-            return None
+    y = 250
+    for line in lines[:5]:
+        draw.text((30, y), line, fill=(255, 255, 255), font=font)
+        y += 40
 
-        image_links = items[0].get("volumeInfo", {}).get("imageLinks", {})
-        cover_url = image_links.get("thumbnail") or image_links.get("smallThumbnail")
-
-        if not cover_url:
-            return None
-
-        img_response = requests.get(cover_url, timeout=30)
-        img_response.raise_for_status()
-
-        with open(output_path, "wb") as f:
-            f.write(img_response.content)
-
-        print(f"[book_visuals] تم تحميل غلاف الكتاب (Google Books): {output_path}")
-        return output_path
-
-    except Exception as e:
-        print(f"[book_visuals] فشل جلب الغلاف من Google Books أيضاً: {e}")
-        return None
+    img.save(output_path)
+    print(f"[book_visuals] تم إنشاء غلاف بديل: {output_path}")
+    return output_path
 
 
 def fetch_background_image(mood: str, output_path: str) -> str:
@@ -113,7 +164,6 @@ def fetch_background_image(mood: str, output_path: str) -> str:
             raise RuntimeError("لا توجد نتائج مطابقة.")
 
         photo_url = photos[0]["src"]["large2x"]
-
         img_response = requests.get(photo_url, timeout=30)
         img_response.raise_for_status()
 
@@ -128,19 +178,35 @@ def fetch_background_image(mood: str, output_path: str) -> str:
         return None
 
 
-def fetch_all_book_assets(title: str, author: str, mood: str) -> dict:
+def create_placeholder_background(mood: str, output_path: str) -> str:
+    color = MOOD_COLORS.get(mood, MOOD_COLORS["neutral"])
+    img = Image.new("RGB", (1920, 1080), color=color)
+    img.save(output_path)
+    print(f"[book_visuals] تم إنشاء خلفية بديلة بمزاج '{mood}': {output_path}")
+    return output_path
+
+
+def fetch_all_book_assets(title: str, author: str, mood: str, english_title: str = None) -> dict:
     cover_path = os.path.join(ASSETS_DIR, "cover.jpg")
     background_path = os.path.join(ASSETS_DIR, "background.jpg")
 
-    cover = fetch_book_cover(title, author, cover_path)
+    search_title = english_title or title
+
+    cover = fetch_book_cover(search_title, author, cover_path)
     if not cover:
-        cover = fetch_google_books_cover(title, author, cover_path)
+        cover = fetch_google_books_cover(search_title, author, cover_path)
+    if not cover:
+        cover = create_placeholder_cover(title, mood, cover_path)
 
     background = fetch_background_image(mood, background_path)
+    if not background:
+        background = create_placeholder_background(mood, background_path)
 
     return {"cover": cover, "background": background}
 
 
 if __name__ == "__main__":
-    result = fetch_all_book_assets("Atomic Habits", "James Clear", "motivational")
+    result = fetch_all_book_assets(
+        "العادات الذرية", "جيمس كلير", "motivational", english_title="Atomic Habits"
+    )
     print(result)
